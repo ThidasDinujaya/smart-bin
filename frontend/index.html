@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SmartBin – Market Bin Monitoring</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <span class="logo" aria-hidden="true"></span>
+    <div>
+      <h1>SmartBin</h1>
+      <p>Market bin monitoring</p>
+    </div>
+  </div>
+  <div class="top-right">
+    <label id="tokenBox" class="token hidden">Admin token
+      <input id="token" type="password" autocomplete="off" placeholder="required">
+    </label>
+    <span id="conn" class="live off"><i></i><span id="connText">Connecting…</span></span>
+  </div>
+</header>
+
+<main>
+  <section id="kpis" class="kpis" aria-label="Summary"></section>
+
+  <section>
+    <div class="section-head"><h2>Bins</h2><span class="hint">Updates automatically</span></div>
+    <div id="bins" class="bins"></div>
+  </section>
+
+  <section class="grid two-one">
+    <div class="panel">
+      <div class="section-head"><h2 id="detailTitle">Fill history</h2></div>
+      <canvas id="chart"></canvas>
+      <p class="legend">
+        <span class="dot blue"></span> lid closed
+        <span class="dot orange"></span> refresh
+        <span class="dot grey"></span> heartbeat
+        <span class="dash amber"></span> nearly full
+        <span class="dash red"></span> full
+      </p>
+    </div>
+    <div class="panel">
+      <div class="section-head"><h2>Recent readings</h2></div>
+      <div class="scroll">
+        <table id="readings">
+          <thead><tr><th>Time</th><th>Event</th><th class="num">Distance</th><th class="num">Fill</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="grid one-two">
+    <div class="panel">
+      <div class="section-head"><h2>Collection route</h2></div>
+      <ol id="route" class="route"></ol>
+      <div id="checkBox" class="hidden">
+        <h3>Check the device</h3>
+        <ul id="check" class="plain"></ul>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="section-head"><h2>Alerts</h2></div>
+      <div class="scroll">
+        <table id="alerts">
+          <thead><tr><th>Bin</th><th>Type</th><th>Started</th><th>Status</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+<footer>SmartBin · Emerging Technologies project · IoT + Cloud</footer>
+<script src="app.js"></script>
+</body>
+</html>
