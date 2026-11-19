@@ -9,7 +9,12 @@ def _bool(value: str) -> bool:
 
 @dataclass
 class Settings:
-    db_path: str = "./data/smartbin.db"
+    db_host: str = ""                        # MySQL server (AWS RDS endpoint or localhost)
+    db_port: int = 3306
+    db_user: str = "root"
+    db_password: str = ""
+    db_name: str = "smartbin"                # created automatically if missing
+    db_path: str = ""                        # SQLite file, tests only
     api_key: str = "change-me-device-key"     # devices send this as X-API-Key
     admin_token: str = ""                    # needed for operator actions
     protect_dashboard: bool = False          # lock the dashboard behind the token
@@ -30,7 +35,10 @@ class Settings:
         d = cls()
         g = os.getenv
         return cls(
-            db_path=g("DB_PATH", d.db_path), api_key=g("API_KEY", d.api_key),
+            db_host=g("DB_HOST", d.db_host), db_port=int(g("DB_PORT", d.db_port)),
+            db_user=g("DB_USER", d.db_user), db_password=g("DB_PASSWORD", d.db_password),
+            db_name=g("DB_NAME", d.db_name), db_path=g("DB_PATH", d.db_path),
+            api_key=g("API_KEY", d.api_key),
             admin_token=g("ADMIN_TOKEN", d.admin_token),
             protect_dashboard=_bool(g("PROTECT_DASHBOARD", str(d.protect_dashboard))),
             default_depth_cm=float(g("DEFAULT_DEPTH_CM", d.default_depth_cm)),

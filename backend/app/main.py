@@ -25,7 +25,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        db = Database(cfg.db_path)
+        db = Database(cfg)
         app.state.settings = cfg
         app.state.db = db
         app.state.service = BinService(db, cfg)
