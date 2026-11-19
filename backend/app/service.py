@@ -92,7 +92,7 @@ class BinService:
                                "ORDER BY id DESC LIMIT 1", (bin_id,))
             prev_fill = prev["fill_pct"] if prev else None
             self.db.execute(
-                "INSERT INTO readings(bin_id, ts, received_at, distance_cm, fill_pct, `trigger`, lid_opens, "
+                "INSERT INTO readings(bin_id, ts, received_at, distance_cm, fill_pct, trigger, lid_opens, "
                 "battery_pct, command_id) VALUES (?,?,?,?,?,?,?,?,?)",
                 (bin_id, when, received, distance_cm, fill, trigger, lid_opens, battery_pct, command_id))
             self._prune(bin_id)
@@ -131,7 +131,7 @@ class BinService:
     def _prune(self, bin_id: str) -> None:
         self.db.execute(
             "DELETE FROM readings WHERE bin_id=? AND id <= "
-            "(SELECT id FROM (SELECT id FROM readings WHERE bin_id=? ORDER BY id DESC LIMIT 1 OFFSET ?) AS keep_from)",
+            "(SELECT id FROM readings WHERE bin_id=? ORDER BY id DESC LIMIT 1 OFFSET ?)",
             (bin_id, bin_id, self.s.max_readings_per_bin))
 
     # views
@@ -150,7 +150,7 @@ class BinService:
         return [((_parse(r["ts"]) - t0).total_seconds() / 3600.0, r["fill_pct"]) for r in rows]
 
     def _view(self, b: Dict[str, Any], now: datetime) -> Dict[str, Any]:
-        latest = self.db.one("SELECT ts, received_at, distance_cm, fill_pct, `trigger`, lid_opens, battery_pct "
+        latest = self.db.one("SELECT ts, received_at, distance_cm, fill_pct, trigger, lid_opens, battery_pct "
                              "FROM readings WHERE bin_id=? ORDER BY id DESC LIMIT 1", (b["id"],))
         valid = latest if (latest and latest["fill_pct"] is not None) else self.db.one(
             "SELECT fill_pct FROM readings WHERE bin_id=? AND fill_pct IS NOT NULL ORDER BY id DESC LIMIT 1",
@@ -192,7 +192,7 @@ class BinService:
 
     def readings(self, bin_id: str, limit: int) -> List[Dict[str, Any]]:
         rows = self.db.query(
-            "SELECT r.ts, r.distance_cm, r.fill_pct, r.`trigger`, r.lid_opens, r.battery_pct, "
+            "SELECT r.ts, r.distance_cm, r.fill_pct, r.trigger, r.lid_opens, r.battery_pct, "
             "EXISTS(SELECT 1 FROM collections c WHERE c.bin_id=r.bin_id AND c.ts=r.ts) AS collected "
             "FROM readings r WHERE r.bin_id=? ORDER BY r.id DESC LIMIT ?", (bin_id, limit))
         rows.reverse()
@@ -286,7 +286,7 @@ class BinService:
             span_min = (_parse(row["z"]) - _parse(row["a"])).total_seconds() / 60.0
             sent += row["n"]
             polling += int(span_min / self.s.poll_baseline_min) + 1
-        by_trigger = {r["trigger"]: r["n"] for r in self.db.query("SELECT `trigger`, COUNT(*) AS n FROM readings GROUP BY `trigger`")}
+        by_trigger = {r["trigger"]: r["n"] for r in self.db.query("SELECT trigger, COUNT(*) AS n FROM readings GROUP BY trigger")}
         saved = round((1 - sent / polling) * 100, 1) if polling > 0 and sent <= polling else 0.0
         active = self.db.one("SELECT COUNT(*) AS n FROM alerts WHERE resolved_at IS NULL")
         coll = self.db.one("SELECT COUNT(*) AS n FROM collections")
