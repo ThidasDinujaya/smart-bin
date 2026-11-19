@@ -3,11 +3,14 @@
 Event-driven smart bin monitoring for a public market. Each bin measures how full it is only when something happens, and a cloud service turns those readings into alerts, a forecast and a collection route.
 
 * **IoT:** ESP32 with an ultrasonic sensor and a lid switch
-* **Cloud:** a Docker container running on AWS EC2 (Kubernetes demo included)
+* **Cloud:** a Docker container on AWS EC2 (Kubernetes demo included) with a MySQL database on Amazon RDS
 
 ```
-ESP32 bin  --- HTTP --->  AWS EC2 (Docker container)  <--- browser
-(sensor + lid switch)     API + database + dashboard      (dashboard)
+ESP32 bin  --- HTTP --->  AWS EC2 (Docker container)  --->  MySQL (Amazon RDS)
+(sensor + lid switch)     API + dashboard                   readings, bins, alerts
+                                ^
+                                |
+                             browser
 ```
 
 ## Contents
@@ -42,14 +45,14 @@ The **Messages saved** card on the dashboard compares real readings with a measu
 ```
 smartbin/
 ├── frontend/       web dashboard (index.html, style.css, app.js)
-├── backend/        cloud service (API, database, tests)
+├── backend/        cloud service (API, MySQL layer, tests)
 │   ├── app/
 │   └── tests/
 ├── firmware/       IoT device code
 │   ├── esp32_smartbin/   real ESP32 board
 │   └── wokwi/            online simulator
 ├── Dockerfile      builds the image (backend + frontend)
-├── .env.example    settings template
+├── .env.example    settings template (keys and MySQL connection)
 └── README.md       this file (every step and command)
 ```
 
@@ -57,23 +60,43 @@ smartbin/
 
 Works the same on Windows, Ubuntu and macOS. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) (or Docker Engine on Ubuntu) and run these from the project root.
 
+The app stores everything in MySQL, so start a MySQL container first. Use the same password here and for `DB_PASSWORD` in `.env`.
+
 ```
 cp .env.example .env
+docker network create smartbin-net
+docker run -d --name smartbin-db --network smartbin-net -e MYSQL_ROOT_PASSWORD=change-me-db-password -e MYSQL_DATABASE=smartbin -v smartbin-mysql:/var/lib/mysql -p 3306:3306 mysql:8.0
 docker build -t smartbin:v1 .
-docker run -d --name smartbin -p 8000:8000 --env-file .env -v smartbin-data:/data smartbin:v1
+docker run -d --name smartbin --network smartbin-net -p 8000:8000 --env-file .env smartbin:v1
 ```
 
 (Windows Command Prompt: use `copy` instead of `cp`. PowerShell accepts `cp`.)
 
+MySQL needs about 30 seconds to start the first time. The app keeps retrying until it can connect, so you do not have to wait. Check it with `docker logs smartbin`.
+
 Open http://localhost:8000. If you turned on `PROTECT_DASHBOARD` or set an `ADMIN_TOKEN`, paste the admin token in the box at the top.
 
-Stop and remove it:
+The tables are created automatically on first start.
+
+Stop and remove everything:
 
 ```
-docker rm -f smartbin
+docker rm -f smartbin smartbin-db
+docker network rm smartbin-net
+docker volume rm smartbin-mysql
 ```
 
-Without Docker (Python 3.10+). On Windows use `python`, on Ubuntu use `python3`:
+Without Docker for the app (Python 3.10+, MySQL still in Docker as above). On Windows use `python`, on Ubuntu use `python3`. First set the connection values in your terminal:
+
+```
+# Ubuntu / macOS
+export DB_HOST=localhost DB_USER=root DB_PASSWORD=change-me-db-password DB_NAME=smartbin
+# Windows Command Prompt
+set DB_HOST=localhost
+set DB_USER=root
+set DB_PASSWORD=change-me-db-password
+set DB_NAME=smartbin
+```
 
 ```
 cd backend
@@ -82,6 +105,17 @@ python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 The dashboard starts empty. A bin appears when a device sends its first reading, either the Wokwi demo or a real ESP32 (see [section 8](#8-device-firmware-wokwi-and-real-esp32)).
+
+### Look at the data with MySQL Workbench
+
+Create a connection with hostname `localhost`, port `3306`, user `root` and your password. Then run:
+
+```sql
+USE smartbin;
+SHOW TABLES;
+SELECT * FROM readings ORDER BY id DESC LIMIT 20;
+SELECT * FROM alerts ORDER BY id DESC;
+```
 
 ## 4. Send a test reading
 
@@ -99,6 +133,8 @@ curl -X POST http://localhost:8000/api/readings -H "X-API-Key: change-me-device-
 
 ## 5. Run the tests
 
+The tests use a temporary SQLite file, so you do not need a MySQL server to run them.
+
 ```
 cd backend
 python3 -m pip install -r requirements-dev.txt
@@ -107,7 +143,7 @@ python3 -m pytest -q
 
 ## 6. Deploy on AWS EC2
 
-Same flow as the lecture practical: launch an EC2 server, open the ports, install software, run the app, optionally add a domain with Route 53. The difference from the lecture is that we install Docker and run the app in a container instead of installing Apache.
+Same flow as the lecture practical: launch an EC2 server, open the ports, install software, run the app, optionally add a domain with Route 53. Differences from the lecture: we install Docker and run the app in a container instead of installing Apache, and the data is stored in a MySQL database on Amazon RDS.
 
 ### Part 1: Launch the EC2 server
 
@@ -115,13 +151,30 @@ Same flow as the lecture practical: launch an EC2 server, open the ports, instal
 2. Name: `smartbin-server`
 3. AMI: **Amazon Linux 2023**
 4. Instance type: `t2.micro` (free tier). Use `t3.micro` if `t2.micro` is not offered in your region.
-5. Key pair: create one (RSA) and choose the **.ppk** format (PuTTY). Keep the file private and never put it in the project folder. You do not need it if you connect with the browser button in Part 2.
+5. Key pair: create one (RSA) and choose the **.ppk** format (PuTTY). Keep the file private and never put it in the project folder. You do not need it if you connect with the browser button in Part 3.
 6. Security group, allow:
    * **SSH (22)** from **Anywhere (0.0.0.0/0)**. The browser Connect button (EC2 Instance Connect) reaches your server from AWS's own addresses, not yours, so "My IP" makes it time out. This is fine for a short lab. If you only use PuTTY, "My IP" is safer.
    * **HTTP (80)** from **Anywhere (0.0.0.0/0)**. The Wokwi simulator runs on the internet, so it needs to reach port 80.
 7. Launch the instance and copy its **Public IPv4 address**.
 
-### Part 2: Connect and install Docker
+### Part 2: Create the MySQL database on RDS
+
+1. AWS Console, open **RDS**, then **Create database**.
+2. Choose **Standard create** and engine **MySQL**.
+3. Template: **Free tier** if your account offers it, otherwise **Dev/Test**.
+4. DB instance identifier: `smartbin-db`
+5. Master username: `admin`. Set a master password and keep it safe.
+6. Instance class: `db.t3.micro` (or the smallest one offered).
+7. Connectivity: choose **Connect to an EC2 compute resource** and select your `smartbin-server` instance. AWS then creates the security group rules so the server can reach the database.
+8. **Public access**: choose **Yes** if you want to open it from MySQL Workbench on your laptop. Choose **No** for a private database.
+9. Open **Additional configuration** and set **Initial database name** to `smartbin`.
+10. Click **Create database** and wait until the status is **Available**. Copy the **Endpoint**, which looks like `smartbin-db.xxxxxx.ap-south-1.rds.amazonaws.com`.
+
+To use MySQL Workbench from your laptop, open the RDS security group, add an inbound rule **MySQL/Aurora (3306)** with source **My IP**, and create a Workbench connection with the endpoint as hostname, port `3306`, user `admin` and your password.
+
+RDS keeps charging while it exists. When you are finished, stop it or delete it in the RDS console.
+
+### Part 3: Connect and install Docker
 
 Select the instance, click **Connect** in the EC2 console and use **EC2 Instance Connect**. It opens a terminal in your browser, so it works the same on Windows, Linux and macOS. (PuTTY with your `.ppk` file also works.)
 
@@ -135,7 +188,7 @@ exit
 
 Connect again so the group change applies.
 
-### Part 3: Get the code and run it
+### Part 4: Get the code and run it
 
 ```
 git clone https://github.com/YOUR_USERNAME/smartbin.git
@@ -144,13 +197,20 @@ cp .env.example .env
 nano .env
 ```
 
-In `.env` set two different random values for `API_KEY` and `ADMIN_TOKEN`, and set `PROTECT_DASHBOARD=true`. Save with Ctrl+O, Enter, Ctrl+X.
+In `.env` set:
+
+* two different random values for `API_KEY` and `ADMIN_TOKEN`, and `PROTECT_DASHBOARD=true`
+* `DB_HOST` = your RDS endpoint
+* `DB_USER=admin` and `DB_PASSWORD` = your RDS master password
+* `DB_NAME=smartbin`
+
+Save with Ctrl+O, Enter, Ctrl+X.
 
 Build and run:
 
 ```
 docker build -t smartbin:v1 .
-docker run -d --name smartbin -p 80:8000 --env-file .env -v smartbin-data:/data --restart unless-stopped smartbin:v1
+docker run -d --name smartbin -p 80:8000 --env-file .env --restart unless-stopped smartbin:v1
 docker ps
 ```
 
@@ -160,15 +220,15 @@ Check on the server:
 curl http://localhost/health
 ```
 
-You should see `{"status":"ok"}`.
+You should see `{"status":"ok"}`. If the container keeps stopping, run `docker logs smartbin`. A "Cannot connect to MySQL" message means the `DB_` values are wrong or the RDS security group does not allow your EC2 server on port 3306.
 
-### Part 4: Open the dashboard
+### Part 5: Open the dashboard
 
 Open `http://<EC2-PUBLIC-IP>/` in your browser (http, not https) and paste the admin token in the box at the top.
 
 The dashboard starts empty. A bin appears when a device sends its first reading. Use the Wokwi demo (section 8) and set `SERVER` to `http://<EC2-PUBLIC-IP>` and `API_KEY` to the value in your `.env`.
 
-### Part 5 (optional): Custom domain with Route 53
+### Part 6 (optional): Custom domain with Route 53
 
 1. Open **Route 53**, register a domain or use an existing one, for example `studentdemo.com`.
 2. Create a hosted zone.
@@ -184,18 +244,20 @@ cd smartbin
 git pull
 docker rm -f smartbin
 docker build -t smartbin:v1 .
-docker run -d --name smartbin -p 80:8000 --env-file .env -v smartbin-data:/data --restart unless-stopped smartbin:v1
+docker run -d --name smartbin -p 80:8000 --env-file .env --restart unless-stopped smartbin:v1
 ```
 
-Stored readings stay in the `smartbin-data` volume. To start with clean data, run `docker rm -f smartbin` and `docker volume rm smartbin-data` first.
+Stored readings stay in MySQL, so nothing is lost when you rebuild the container. To start with clean data, open MySQL Workbench and run `DROP DATABASE smartbin;`. The app creates the tables again when it restarts.
 
 ### When you are finished
 
-Stop the instance in the EC2 console so you are not charged.
+Stop the EC2 instance and stop or delete the RDS database so you are not charged.
 
 ## 7. Run on Kubernetes (Docker Desktop)
 
 Same method as the lecture: enable Kubernetes in Docker Desktop, then use `kubectl` commands. Works on Windows, Ubuntu and macOS.
+
+The app needs a MySQL database. For this demo, start the MySQL container from [section 3](#3-run-it-on-your-computer) (the `smartbin-db` container with port 3306 published). The pod will reach it through `host.docker.internal`, which points to your computer. You can also use your RDS endpoint instead.
 
 ### Step 1: Enable Kubernetes
 
@@ -224,11 +286,15 @@ kubectl get deployments
 kubectl get pods
 ```
 
-The pod does not read your `.env` file, so it starts with the defaults: device key `change-me-device-key` and no admin token. To set your own (this restarts the pod):
+The pod does not read your `.env` file, so give it the settings (this restarts the pod). Without them the app cannot reach the database.
 
 ```
-kubectl set env deployment/smartbin API_KEY=your-device-key ADMIN_TOKEN=your-admin-token
+kubectl set env deployment/smartbin API_KEY=your-device-key ADMIN_TOKEN=your-admin-token DB_HOST=host.docker.internal DB_USER=root DB_PASSWORD=change-me-db-password DB_NAME=smartbin
+kubectl get pods
+kubectl logs deployment/smartbin
 ```
+
+Use your RDS endpoint, `admin` and the RDS password instead if you are using RDS.
 
 ### Step 4: Expose and open it
 
@@ -250,9 +316,16 @@ kubectl delete pod <pod-name>
 kubectl get pods
 ```
 
-Kubernetes creates a new pod by itself. Stored readings live inside the pod, so they are cleared when the pod is replaced.
+Kubernetes creates a new pod by itself. Your readings are still there, because they are stored in MySQL and not inside the pod.
 
-Do not scale this app to more than one replica: the database is a single file inside each pod, so every copy would have different data.
+### Scaling demo
+
+```
+kubectl scale deployment smartbin --replicas=3
+kubectl get pods
+```
+
+All copies share the same MySQL database, so they show the same data. Scale back with `--replicas=1`.
 
 ### Clean up
 
@@ -260,6 +333,8 @@ Do not scale this app to more than one replica: the database is a single file in
 kubectl delete service smartbin
 kubectl delete deployment smartbin
 ```
+
+Remove the MySQL container as shown in section 3 when you no longer need it.
 
 ## 8. Device firmware (Wokwi and real ESP32)
 
@@ -333,14 +408,20 @@ Set these in `.env`.
 | `API_KEY` | key the devices send with every reading |
 | `ADMIN_TOKEN` | token for operator actions |
 | `PROTECT_DASHBOARD` | `true` makes the dashboard need the token |
+| `DB_HOST` | MySQL server: your RDS endpoint, or `smartbin-db` locally |
+| `DB_PORT` | MySQL port, default `3306` |
+| `DB_USER` | MySQL user (`admin` on RDS, `root` locally) |
+| `DB_PASSWORD` | MySQL password |
+| `DB_NAME` | database name, default `smartbin` (created if missing) |
 
 Advanced values (thresholds, bin depth, cooldown) have defaults in `backend/app/config.py` and can also be set as environment variables.
 
 ## 12. Limits
 
 * The firmware has not been tested on real hardware yet.
-* The database is one file inside a Docker volume, so run one copy of the server. Amazon RDS is the next step for more.
-* HTTP only and one shared device key, which is fine for a demo.
+* One shared device key and HTTP only, which is fine for a demo.
+* The RDS database is a single instance. Multi-AZ would add a standby copy but is not set up here.
+* Several server copies share one database. Two readings arriving at the same instant could very rarely create a duplicate alert.
 * Fill is assumed to change only when the lid opens.
 
 ## License
