@@ -151,9 +151,9 @@ Same flow as the lecture practical: launch an EC2 server, open the ports, instal
 2. Name: `smartbin-server`
 3. AMI: **Amazon Linux 2023**
 4. Instance type: `t2.micro` (free tier). Use `t3.micro` if `t2.micro` is not offered in your region.
-5. Key pair: create one (RSA) and choose the **.ppk** format (PuTTY). Keep the file private and never put it in the project folder. You do not need it if you connect with the browser button in Part 3.
+5. Key pair: choose **Proceed without a key pair**. You connect with the browser button in Part 3, so no key file or PuTTY is needed.
 6. Security group, allow:
-   * **SSH (22)** from **Anywhere (0.0.0.0/0)**. The browser Connect button (EC2 Instance Connect) reaches your server from AWS's own addresses, not yours, so "My IP" makes it time out. This is fine for a short lab. If you only use PuTTY, "My IP" is safer.
+   * **SSH (22)** from **Anywhere (0.0.0.0/0)**. The browser Connect button (EC2 Instance Connect) reaches your server from AWS's own addresses, not yours, so "My IP" makes it time out. This is fine for a short lab.
    * **HTTP (80)** from **Anywhere (0.0.0.0/0)**. The Wokwi simulator runs on the internet, so it needs to reach port 80.
 7. Launch the instance and copy its **Public IPv4 address**.
 
@@ -176,7 +176,7 @@ RDS keeps charging while it exists. When you are finished, stop it or delete it 
 
 ### Part 3: Connect and install Docker
 
-Select the instance, click **Connect** in the EC2 console and use **EC2 Instance Connect**. It opens a terminal in your browser, so it works the same on Windows, Linux and macOS. (PuTTY with your `.ppk` file also works.)
+Select the instance, click **Connect** in the EC2 console and use **EC2 Instance Connect**. It opens a terminal in your browser, so it works the same on Windows, Linux and macOS.
 
 ```
 sudo yum install docker git -y
