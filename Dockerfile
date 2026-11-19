@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 DB_PATH=/data/smartbin.db FRONTEND_DIR=/srv/frontend
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 FRONTEND_DIR=/srv/frontend
 WORKDIR /srv
 
 COPY backend/requirements.txt .
@@ -9,10 +9,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/app ./app
 COPY frontend ./frontend
 
-# non-root user, /data holds the db
-RUN useradd --create-home --uid 10001 smartbin && mkdir -p /data && chown smartbin /data
+# non-root user (data lives in MySQL, not in the container)
+RUN useradd --create-home --uid 10001 smartbin
 USER smartbin
-VOLUME ["/data"]
 EXPOSE 8000
 
 HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=3 \
